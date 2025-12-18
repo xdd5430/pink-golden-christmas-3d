@@ -1,0 +1,7 @@
+{
+  "name": "Pink Golden Christmas 3D",
+  "description": "A high-fidelity 3D Christmas experience featuring a magical tree composed of glowing pink and golden particles with cinematic bloom and hand gesture control.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
