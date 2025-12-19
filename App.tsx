@@ -27,6 +27,8 @@ const App: React.FC = () => {
   
   const [galleryMode, setGalleryMode] = useState<GalleryMode>('TREE');
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const [activePhotoIdx, setActivePhotoIdx] = useState(0);
+  const [jumpToIdx, setJumpToIdx] = useState<number | null>(null);
 
   const [loveRecipient, setLoveRecipient] = useState('U');
   const [isEditingRecipient, setIsEditingRecipient] = useState(false);
@@ -53,7 +55,6 @@ const App: React.FC = () => {
       if (galleryMode === 'TREE') setGalleryMode('SPREAD');
     }
     
-    // 缩放逻辑由 PhotoOrnaments 内部通过计算距离手部最近的照片来决定，这里只同步模式
     if (isPinchDetected && galleryMode === 'SPREAD') {
       setGalleryMode('ZOOM');
     } else if (!isPinchDetected && galleryMode === 'ZOOM') {
@@ -65,7 +66,6 @@ const App: React.FC = () => {
     if (!wishText.trim()) return;
     const newWish = { id: wishIdRef.current++, text: wishText };
     setWishes(prev => [...prev, newWish]);
-    // 发送后不立即清空 wishText，以便它能作为下一张上传照片的默认文字
   };
 
   const onWishArrival = useCallback((id: number) => {
@@ -112,7 +112,25 @@ const App: React.FC = () => {
         photos={photos}
         selectedPhotoId={selectedPhotoId}
         onSelectPhoto={setSelectedPhotoId}
+        onIndexChange={setActivePhotoIdx}
+        jumpToIdx={jumpToIdx}
       />
+
+      {/* 2D Thumbnail Navigation Bar - Only shown in SPREAD mode */}
+      <div className={`absolute bottom-32 left-0 w-full flex justify-center px-8 transition-all duration-500 z-50 ${galleryMode === 'SPREAD' && photos.length > 0 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
+        <div className="flex gap-3 overflow-x-auto pb-4 max-w-full no-scrollbar px-10 bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 py-4 shadow-2xl">
+          {photos.map((photo, idx) => (
+            <button
+              key={photo.id}
+              onClick={() => setJumpToIdx(idx)}
+              className={`relative flex-shrink-0 w-16 h-20 rounded-lg overflow-hidden border-2 transition-all duration-300 transform ${activePhotoIdx === idx ? 'border-pink-500 scale-110 shadow-[0_0_15px_rgba(236,72,153,0.5)]' : 'border-white/20 hover:border-white/50 scale-100'}`}
+            >
+              <img src={photo.url} className="w-full h-full object-cover" alt="nav thumb" />
+              <div className={`absolute inset-0 bg-pink-500/20 transition-opacity ${activePhotoIdx === idx ? 'opacity-100' : 'opacity-0'}`} />
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="absolute top-12 left-12 text-left pointer-events-none z-10">
         <h1 className="text-4xl md:text-6xl font-extrabold tracking-widest text-pink-300 drop-shadow-[0_0_15px_rgba(255,105,180,0.6)] mb-2 uppercase">

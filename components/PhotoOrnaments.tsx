@@ -21,8 +21,8 @@ const createTextTexture = (text: string) => {
   ctx.fillStyle = '#FFD700';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(255, 215, 0, 0.6)';
-  ctx.shadowBlur = 12;
+  ctx.shadowColor = 'rgba(255, 215, 0, 0.8)';
+  ctx.shadowBlur = 15;
   ctx.fillText(text, canvas.width / 2, canvas.height / 2);
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
@@ -41,7 +41,8 @@ interface PhotoMeshProps {
 
 const PhotoMesh: React.FC<PhotoMeshProps> = ({ photo, index, total, galleryMode, scrollPos, isFocused, isZoomed }) => {
   const meshRef = useRef<THREE.Group>(null!);
-  const { camera } = useThree();
+  const photoMatRef = useRef<THREE.MeshBasicMaterial>(null!);
+  const { camera, size } = useThree();
   
   const texture = useMemo(() => {
     const loader = new THREE.TextureLoader();
@@ -56,7 +57,7 @@ const PhotoMesh: React.FC<PhotoMeshProps> = ({ photo, index, total, galleryMode,
     const yPercent = 0.2 + (index * 0.15) % 0.6;
     const y = yPercent * CONFIG.TREE_HEIGHT - CONFIG.TREE_HEIGHT/2;
     const t = (y + CONFIG.TREE_HEIGHT/2) / CONFIG.TREE_HEIGHT;
-    const radius = (1.0 - t) * CONFIG.TREE_BASE_RADIUS + 0.3;
+    const radius = (1.0 - t) * CONFIG.TREE_BASE_RADIUS + 0.35;
     const angle = (index * (Math.PI * 2 / 5));
     return {
       pos: new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius),
@@ -70,68 +71,82 @@ const PhotoMesh: React.FC<PhotoMeshProps> = ({ photo, index, total, galleryMode,
     let targetPos = treeTargets.pos.clone();
     let targetQuat = new THREE.Quaternion().setFromEuler(treeTargets.rot);
     let targetScale = 1.0;
+    let targetOpacity = 1.0;
 
-    if (galleryMode === 'SPREAD' || galleryMode === 'ZOOM') {
-      const spacing = 4.5; // 水平间距
+    if (galleryMode === 'SPREAD') {
+      const spacing = 5.5;
       const xOffset = (index - scrollPos) * spacing;
-      
-      targetPos.set(xOffset, 0, 8); 
-      
+      targetPos.set(xOffset, 0, 8);
       const m = new THREE.Matrix4();
       m.lookAt(meshRef.current.position, camera.position, new THREE.Vector3(0, 1, 0));
       targetQuat.setFromRotationMatrix(m);
+      targetScale = isFocused ? 2.2 : 1.2;
+      targetOpacity = isFocused ? 1.0 : 0.75;
+      targetPos.z += isFocused ? 2.0 : 0.5;
+    }
 
-      if (galleryMode === 'ZOOM') {
-        if (isZoomed) {
-          // 绝对居中：抵消 InteractionWrapper 的视差偏移
-          const parentPos = meshRef.current.parent ? meshRef.current.parent.position : new THREE.Vector3();
-          const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-          const worldTarget = camera.position.clone().add(camDir.multiplyScalar(6.0));
-          
-          targetPos.copy(worldTarget).sub(parentPos);
-          targetQuat.copy(camera.quaternion);
-          targetScale = 4.5;
-        } else {
-          targetScale = 0.01; // 非选中照片完全隐藏或下沉
-          targetPos.y -= 15;
-        }
+    if (galleryMode === 'ZOOM') {
+      if (isZoomed) {
+        const distance = 8.0;
+        const worldDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        const worldCenter = camera.position.clone().add(worldDir.multiplyScalar(distance));
+        const parentWorldPos = new THREE.Vector3();
+        meshRef.current.parent?.getWorldPosition(parentWorldPos);
+        targetPos.copy(worldCenter).sub(parentWorldPos);
+        targetQuat.copy(camera.quaternion);
+        const vFov = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
+        const visibleHeight = 2 * Math.tan(vFov / 2) * distance;
+        const visibleWidth = visibleHeight * (size.width / size.height);
+        const frameW = 1.6 + 0.25;
+        const frameH = 1.6 / photo.aspectRatio + 0.6;
+        targetScale = Math.min(visibleHeight / frameH, visibleWidth / frameW) * 0.85;
+        targetOpacity = 1.0;
       } else {
-        targetScale = isFocused ? 1.6 : 0.9;
-        if (isFocused) {
-          targetPos.z += 1.5;
-        }
+        targetScale = 0.001;
+        targetOpacity = 0.0;
+        targetPos.y -= 20;
       }
     }
 
-    meshRef.current.position.lerp(targetPos, 0.1);
-    meshRef.current.quaternion.slerp(targetQuat, 0.1);
-    meshRef.current.scale.setScalar(THREE.MathUtils.lerp(meshRef.current.scale.x, targetScale, 0.1));
+    meshRef.current.position.lerp(targetPos, 0.15);
+    meshRef.current.quaternion.slerp(targetQuat, 0.15);
+    meshRef.current.scale.setScalar(THREE.MathUtils.lerp(meshRef.current.scale.x, targetScale, 0.2));
+
+    if (photoMatRef.current) {
+      photoMatRef.current.opacity = THREE.MathUtils.lerp(photoMatRef.current.opacity, targetOpacity, 0.1);
+    }
   });
 
-  const photoW = 1.4;
+  const photoW = 1.6;
   const photoH = photoW / photo.aspectRatio;
-  const frameW = photoW + 0.2;
-  const frameH = photoH + 0.5;
+  const frameW = photoW + 0.25;
+  const frameH = photoH + 0.6;
 
   return (
     <Group ref={meshRef}>
       <Mesh position={[0, -0.15, -0.01]}>
         <PlaneGeometry args={[frameW, frameH]} />
-        <MeshBasicMaterial color="#FFFFFF" side={THREE.DoubleSide} />
+        <MeshBasicMaterial color="#FFFFFF" transparent opacity={0.98} side={THREE.DoubleSide} />
       </Mesh>
-      <Mesh position={[0, 0, 0]}>
+      <Mesh position={[0, 0, 0.02]}>
         <PlaneGeometry args={[photoW, photoH]} />
-        <MeshBasicMaterial map={texture} side={THREE.DoubleSide} toneMapped={false} />
+        <MeshBasicMaterial 
+          ref={photoMatRef}
+          map={texture} 
+          side={THREE.DoubleSide} 
+          toneMapped={false} 
+          transparent
+        />
       </Mesh>
       {textTexture && (
-        <Mesh position={[0, -photoH / 2 - 0.2, 0.01]}>
-          <PlaneGeometry args={[frameW * 0.9, 0.3]} />
+        <Mesh position={[0, -photoH / 2 - 0.25, 0.03]}>
+          <PlaneGeometry args={[frameW * 0.9, 0.35]} />
           <MeshBasicMaterial map={textTexture} transparent side={THREE.DoubleSide} />
         </Mesh>
       )}
       <Mesh position={[0, -0.15, -0.02]}>
-        <PlaneGeometry args={[frameW + 0.04, frameH + 0.04]} />
-        <MeshBasicMaterial color="#FFD700" side={THREE.DoubleSide} opacity={isFocused ? 0.7 : 0.2} transparent />
+        <PlaneGeometry args={[frameW + 0.06, frameH + 0.06]} />
+        <MeshBasicMaterial color="#FFD700" side={THREE.DoubleSide} opacity={isFocused ? 0.9 : 0.2} transparent />
       </Mesh>
     </Group>
   );
@@ -143,42 +158,58 @@ interface PhotoOrnamentsProps {
   handPos: { x: number, y: number };
   selectedPhotoId: string | null;
   onSelectPhoto: (id: string | null) => void;
+  onIndexChange?: (idx: number) => void;
+  jumpToIdx?: number | null;
 }
 
-const PhotoOrnaments: React.FC<PhotoOrnamentsProps> = ({ photos, galleryMode, handPos, selectedPhotoId, onSelectPhoto }) => {
+const PhotoOrnaments: React.FC<PhotoOrnamentsProps> = ({
+  photos,
+  galleryMode,
+  handPos,
+  selectedPhotoId,
+  onSelectPhoto,
+  onIndexChange,
+  jumpToIdx
+}) => {
   const [scrollPos, setScrollPos] = useState(0);
-  const [treeFocusedIdx, setTreeFocusedIdx] = useState(0);
   const prevHandX = useRef(handPos.x);
   const prevMode = useRef(galleryMode);
+  const scrollVelocity = useRef(0);
+  const lastActiveIdx = useRef(-1);
 
-  // 1. 焦点继承逻辑：在树模式下预锁定的索引
-  useFrame(() => {
-    if (galleryMode === 'TREE' && photos.length > 0) {
-      const idx = Math.floor(handPos.x * photos.length);
-      setTreeFocusedIdx(Math.max(0, Math.min(photos.length - 1, idx)));
+  // Sync index to parent
+  useEffect(() => {
+    const currentIdx = Math.round(scrollPos);
+    if (currentIdx !== lastActiveIdx.current && photos.length > 0) {
+      lastActiveIdx.current = currentIdx;
+      onIndexChange?.(currentIdx);
     }
-  });
+  }, [scrollPos, photos.length, onIndexChange]);
+
+  // Handle jumping to index from 2D nav
+  useEffect(() => {
+    if (jumpToIdx !== null && jumpToIdx !== undefined && photos.length > 0) {
+      setScrollPos(jumpToIdx);
+      scrollVelocity.current = 0;
+    }
+  }, [jumpToIdx, photos.length]);
 
   useEffect(() => {
-    // 刚进入相册模式时，将滚动位置同步到树模式下看到的照片
-    if (prevMode.current === 'TREE' && galleryMode === 'SPREAD') {
-      setScrollPos(treeFocusedIdx);
+    if (prevMode.current !== galleryMode) {
+      scrollVelocity.current = 0;
       prevHandX.current = handPos.x;
     }
     prevMode.current = galleryMode;
-  }, [galleryMode, treeFocusedIdx]);
+  }, [galleryMode, handPos.x]);
 
-  // 2. 动力学滑动
   useFrame(() => {
-    if ((galleryMode === 'SPREAD' || galleryMode === 'ZOOM') && photos.length > 0) {
+    if (galleryMode === 'SPREAD' || galleryMode === 'ZOOM') {
       const deltaX = handPos.x - prevHandX.current;
-      
-      // 灵敏度系数，手部小幅度移动即可大幅滑动
-      const sensitivity = 18; 
-      const targetScroll = scrollPos + deltaX * sensitivity;
-      const clampedScroll = Math.max(0, Math.min(photos.length - 1, targetScroll));
-      
-      setScrollPos(THREE.MathUtils.lerp(scrollPos, clampedScroll, 0.15));
+      scrollVelocity.current += deltaX * 60;
+      scrollVelocity.current *= 0.85;
+      let nextScroll = scrollPos + scrollVelocity.current * 0.016;
+      nextScroll = THREE.MathUtils.clamp(nextScroll, 0, photos.length - 1);
+      setScrollPos(nextScroll);
       prevHandX.current = handPos.x;
     }
   });
@@ -189,7 +220,7 @@ const PhotoOrnaments: React.FC<PhotoOrnamentsProps> = ({ photos, galleryMode, ha
   return (
     <Group>
       {photos.map((photo, i) => (
-        <PhotoMesh 
+        <PhotoMesh
           key={photo.id}
           photo={photo}
           index={i}

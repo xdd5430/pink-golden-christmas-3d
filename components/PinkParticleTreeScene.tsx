@@ -15,7 +15,6 @@ import StarExplosion from './StarExplosion';
 import HeartRain from './HeartRain';
 import { PhotoData, GalleryMode } from '../App';
 
-// Fix for JSX intrinsic element errors
 const Group = 'group' as any;
 const Color = 'color' as any;
 
@@ -30,14 +29,17 @@ const InteractionWrapper: React.FC<{
   useFrame(() => {
     if (!groupRef.current) return;
     
+    const lerpFactor = galleryMode === 'ZOOM' ? 0.02 : 0.06;
+    const movementScale = galleryMode === 'ZOOM' ? 0.4 : 4.5;
+
     if (galleryMode === 'SPREAD' || galleryMode === 'ZOOM') {
-      const targetX = (handPos.x - 0.5) * 4;
-      const targetY = -(handPos.y - 0.5) * 4;
-      groupRef.current.position.x = THREE.MathUtils.lerp(groupRef.current.position.x, targetX, 0.05);
-      groupRef.current.position.y = THREE.MathUtils.lerp(groupRef.current.position.y, targetY, 0.05);
+      const targetX = (handPos.x - 0.5) * movementScale;
+      const targetY = -(handPos.y - 0.5) * movementScale;
+      groupRef.current.position.x = THREE.MathUtils.lerp(groupRef.current.position.x, targetX, lerpFactor);
+      groupRef.current.position.y = THREE.MathUtils.lerp(groupRef.current.position.y, targetY, lerpFactor);
       
-      const rotY = (handPos.x - 0.5) * 0.5;
-      groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, rotY, 0.05);
+      const rotY = (handPos.x - 0.5) * (galleryMode === 'ZOOM' ? 0.05 : 0.8);
+      groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, rotY, lerpFactor);
     } else {
       groupRef.current.position.set(0, 0, 0);
       if (isFist) {
@@ -59,7 +61,7 @@ const TreeLayer: React.FC<{
   useFrame((state, delta) => {
     if (groupRef.current) {
       const targetScale = galleryMode === 'TREE' ? 1.0 : 0.4;
-      const targetY = galleryMode === 'TREE' ? -CONFIG.TREE_HEIGHT / 2 : -CONFIG.TREE_HEIGHT / 2 - 5;
+      const targetY = galleryMode === 'TREE' ? -CONFIG.TREE_HEIGHT / 2 : -CONFIG.TREE_HEIGHT / 2 - 8;
       
       groupRef.current.scale.setScalar(THREE.MathUtils.lerp(groupRef.current.scale.x, targetScale, 0.08));
       groupRef.current.position.y = THREE.MathUtils.lerp(groupRef.current.position.y, targetY, 0.08);
@@ -92,10 +94,12 @@ interface PinkParticleTreeSceneProps {
   photos: PhotoData[];
   selectedPhotoId: string | null;
   onSelectPhoto: (id: string | null) => void;
+  onIndexChange?: (idx: number) => void;
+  jumpToIdx?: number | null;
 }
 
 const PinkParticleTreeScene: React.FC<PinkParticleTreeSceneProps> = ({ 
-  isHandOpen, isFist, isHeart, handPos, galleryMode, wishes, onWishArrival, treePulse, setTreePulse, photos, selectedPhotoId, onSelectPhoto
+  isHandOpen, isFist, isHeart, handPos, galleryMode, wishes, onWishArrival, treePulse, setTreePulse, photos, selectedPhotoId, onSelectPhoto, onIndexChange, jumpToIdx
 }) => {
   const [explosions, setExplosions] = useState<{ id: number; pos: [number, number, number] }[]>([]);
 
@@ -130,6 +134,8 @@ const PinkParticleTreeScene: React.FC<PinkParticleTreeSceneProps> = ({
           handPos={handPos}
           selectedPhotoId={selectedPhotoId}
           onSelectPhoto={onSelectPhoto}
+          onIndexChange={onIndexChange}
+          jumpToIdx={jumpToIdx}
         />
 
         {explosions.map(exp => (

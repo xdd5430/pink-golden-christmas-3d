@@ -1,4 +1,3 @@
-
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
@@ -14,6 +13,7 @@ const vertexShader = `
   uniform float uTime;
   uniform float uHeight;
   uniform float uWishEnergy;
+  uniform float uExploded; // Explode factor: 0 = collapsed, 1 = fully exploded
   attribute float aSize;
   attribute vec3 aRandom;
   
@@ -24,9 +24,18 @@ const vertexShader = `
   void main() {
     vec3 pos = position;
     
+    // Add slight movement for liveliness
     pos.x += sin(uTime * 0.5 + aRandom.x * 10.0) * 0.01;
     pos.z += cos(uTime * 0.5 + aRandom.z * 10.0) * 0.01;
 
+    // Spread out particles if exploded
+    if (uExploded > 0.0) {
+      pos.x += (aRandom.x - 0.5) * uExploded * 10.0;
+      pos.y += (aRandom.y - 0.5) * uExploded * 10.0;
+      pos.z += (aRandom.z - 0.5) * uExploded * 10.0;
+    }
+
+    // Slight scale effect based on wish energy
     pos.xz *= (1.0 + uWishEnergy * 0.05);
 
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
@@ -71,12 +80,14 @@ const fragmentShader = `
 
 interface PinkTreeParticlesProps {
   wishEnergy?: number;
+  exploded?: boolean; // Indicates whether particles should be exploded
 }
 
-const PinkTreeParticles: React.FC<PinkTreeParticlesProps> = ({ wishEnergy = 0 }) => {
+const PinkTreeParticles: React.FC<PinkTreeParticlesProps> = ({ wishEnergy = 0, exploded = false }) => {
   const meshRef = useRef<THREE.Points>(null!);
   const count = CONFIG.TREE_PARTICLES;
 
+  // Generate particle positions, sizes, and random attributes
   const { positions, sizes, randoms } = useMemo(() => {
     const posArray = new Float32Array(count * 3);
     const sizeArray = new Float32Array(count);
@@ -108,21 +119,24 @@ const PinkTreeParticles: React.FC<PinkTreeParticlesProps> = ({ wishEnergy = 0 })
     return { positions: posArray, sizes: sizeArray, randoms: randArray };
   }, [count]);
 
+  // Set up shader uniforms
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
     uHeight: { value: CONFIG.TREE_HEIGHT },
     uWishEnergy: { value: 0 },
+    uExploded: { value: exploded ? 1.0 : 0.0 }, // Pass exploded state to shader
     uColorWhite: { value: new THREE.Color(CONFIG.COLORS.WHITE_TOP) },
     uColorPink: { value: new THREE.Color(CONFIG.COLORS.PINK_MAIN) },
     uColorPinkDark: { value: new THREE.Color(CONFIG.COLORS.PINK_DARK) },
     uColorGold: { value: new THREE.Color(CONFIG.COLORS.GOLD_HALO) }
-  }), []);
+  }), [exploded]);
 
   useFrame((state) => {
     if (meshRef.current) {
       const material = meshRef.current.material as THREE.ShaderMaterial;
       material.uniforms.uTime.value = state.clock.elapsedTime;
       material.uniforms.uWishEnergy.value = wishEnergy;
+      material.uniforms.uExploded.value = exploded ? 1.0 : 0.0;
     }
   });
 
